@@ -20,19 +20,20 @@ warnings.filterwarnings('ignore')
 
 # Create Spark session
 spark = SparkSession.builder \
-    .appName('AMS') \
+    .appName('Amazon Review Analytic') \
     .master('local') \
     .getOrCreate()
 
 
 # Convert rating to label
-data = spark.read.json('data/reviews_Musical_Instruments_5.json')
-review = data.select(['reviewerID', 'reviewText', 'overall'])
-review = review.withColumn('label', when(data["overall"] > 3.0, 1).otherwise(0))
+data = spark.read.json('data/*')
+review = data.select(['reviewerID', 'reviewText', 'summary', 'overall'])
+review = review.withColumn('review', when(review["reviewText"] != "", review["reviewText"]).otherwise(review["summary"]))\
+    .withColumn('label', when(data["verified"] is True, 1).otherwise(0))
 
 # compute tf-idf
 
-tokenizer = Tokenizer(inputCol="reviewText", outputCol="words")
+tokenizer = Tokenizer(inputCol="review", outputCol="words")
 review_word = tokenizer.transform(review)
 
 # remove stop words
