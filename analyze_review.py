@@ -8,13 +8,14 @@ from pyspark.ml.tuning import *
 from pyspark.ml.evaluation import *
 from pyspark.sql.types import DoubleType
 from pyspark.sql.functions import rand
-from sklearn.metrics import classification_report
 from time import time
 from pyspark import SparkContext, SparkConf
 from pyspark.sql import SQLContext, Row
 from pyspark.sql.functions import when
 from pyspark.sql import SparkSession
 from pyspark.ml.evaluation import BinaryClassificationEvaluator
+from pyspark.mllib.evaluation import MulticlassMetrics
+from metrics import plot_confusion_matrix
 
 warnings.filterwarnings('ignore')
 
@@ -26,10 +27,10 @@ spark = SparkSession.builder \
 
 
 # Convert rating to label
-data = spark.read.json('data/*')
-review = data.select(['reviewerID', 'reviewText', 'summary', 'overall'])
+data = spark.read.json('data/All_Beauty_5.json')
+review = data.select(['reviewerID', 'reviewText', 'summary', 'overall', 'verified'])
 review = review.withColumn('review', when(review["reviewText"] != "", review["reviewText"]).otherwise(review["summary"]))\
-    .withColumn('label', when(data["verified"] is True, 1).otherwise(0))
+    .withColumn('label', when(data["verified"] == True, 1).otherwise(0))
 
 # compute tf-idf
 
@@ -41,8 +42,9 @@ remover = StopWordsRemover(inputCol="words", outputCol="filtered")
 removed_review = remover.transform(review_word)
 
 # Convert to TF words vector
-hashingTF = HashingTF(inputCol="filtered", outputCol="tf")
+hashingTF = HashingTF(inputCol="filtered", outputCol="tf", numFeatures=10000)
 tf_review = hashingTF.transform(removed_review)
+tf_review.show()
 
 # Convert to TF*IDF words vector
 idf = IDF(inputCol="tf", outputCol="features")
@@ -72,3 +74,11 @@ f1_score = f1_evaluator.evaluate(prediction)
 
 print('Accuracy:', accuracy_score)
 print('F1-score:', f1_score)
+
+prediction = prediction.select(['prediction', 'label'])
+
+metrics = MulticlassMetrics(prediction.rdd.map(lambda x: (float(x[0]), float(x[1]))))
+
+cm = metrics.confusionMatrix().toArray()
+plot_confusion_matrix(cm=cm, target_names=['False', 'True'], save_dir='results')
+plot_confusion_matrix(cm=cm, target_names=['False', 'True'], save_dir='results', normalize=False, title='Not normalized')
